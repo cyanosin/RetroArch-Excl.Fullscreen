@@ -2272,7 +2272,7 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
    desc.Flags                              = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
    if (d3d11->flags & D3D11_ST_FLAG_WAITABLE_SWAPCHAINS)
       desc.Flags                          |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-   desc.SwapEffect                         = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+   desc.SwapEffect                         = DXGI_SWAP_EFFECT_DISCARD;
 #endif
 
    adapter->lpVtbl->GetParent(
@@ -2285,8 +2285,10 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
    if (d3d11->flags & D3D11_ST_FLAG_WAITABLE_SWAPCHAINS)
       desc.Flags                          |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
    desc.SwapEffect                         = DXGI_SWAP_EFFECT_DISCARD;
+   desc.Flags &= ~(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
+      ; d3d11->flags = 0
 
-   adapter->lpVtbl->GetParent(
+      ; adapter->lpVtbl->GetParent(
          adapter, uuidof(IDXGIFactory1), (void**)&dxgiFactory);
 
    /* Check for ALLOW_TEARING support before trying to use it.
@@ -2306,12 +2308,13 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
          &allow_tearing_supported, sizeof(allow_tearing_supported)))
          && allow_tearing_supported)
       {
-         desc.SwapEffect            = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-         desc.Flags                |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+         desc.SwapEffect            = DXGI_SWAP_EFFECT_DISCARD;
+         desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+         desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
          d3d11->flags              |= D3D11_ST_FLAG_HAS_FLIP_MODEL
                                     | D3D11_ST_FLAG_HAS_ALLOW_TEARING;
 
-         RARCH_LOG("[D3D11] Flip model and tear control supported and enabled.\n");
+         RARCH_LOG("[D3D11] Flip model disabled.\n");
       }
 
       dxgiFactory5->lpVtbl->Release(dxgiFactory5);
@@ -2321,7 +2324,7 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
                dxgiFactory, (IUnknown*)d3d11->device,
                &desc, (IDXGISwapChain**)&d3d11->swapChain)))
    {
-      RARCH_WARN("[D3D11] Failed to create swapchain with flip model, try non-flip model.\n");
+      RARCH_LOG("[D3D11] Creating blit swapchain.\n");
 
       /* Failed to create swapchain, try non-flip model */
       desc.SwapEffect           =  DXGI_SWAP_EFFECT_DISCARD;
@@ -2329,21 +2332,77 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
       d3d11->flags             &= ~(D3D11_ST_FLAG_HAS_FLIP_MODEL
                                   | D3D11_ST_FLAG_HAS_ALLOW_TEARING
                                    );
+      /* --- Snap to a real mode before CreateSwapChain --- */
+      IDXGIDevice* dxgi_dev = NULL;
+      IDXGIAdapter* adapter = NULL;
+      IDXGIOutput* target_out = NULL;
+
+      DXGI_MODE_DESC desired = desc.BufferDesc;
+      DXGI_MODE_DESC closest; ZeroMemory(&closest, sizeof(closest));
+
+      /* get adapter from device */
+      if (SUCCEEDED(d3d11->device->lpVtbl->QueryInterface(d3d11->device,
+         &IID_IDXGIDevice, (void**)&dxgi_dev)) &&
+         SUCCEEDED(dxgi_dev->lpVtbl->GetAdapter(dxgi_dev, &adapter)))
+      {
+         HMONITOR mon = MonitorFromWindow(desc.OutputWindow, MONITOR_DEFAULTTONEAREST);
+         for (UINT i = 0;; ++i) {
+            IDXGIOutput* out = NULL;
+            if (adapter->lpVtbl->EnumOutputs(adapter, i, &out) == DXGI_ERROR_NOT_FOUND)
+               break;
+
+            DXGI_OUTPUT_DESC odesc;
+            if (SUCCEEDED(out->lpVtbl->GetDesc(out, &odesc)) && odesc.Monitor == mon) {
+               target_out = out; /* keep this one */
+               break;
+            }
+            out->lpVtbl->Release(out);
+         }
+      }
+
+      if (target_out &&
+         SUCCEEDED(target_out->lpVtbl->FindClosestMatchingMode(
+            target_out, &desired, &closest, (IUnknown*)d3d11->device)))
+      {
+         desc.BufferDesc = closest; /* replace request with valid mode */
+      }
+
+      /* enforce exclusive fullscreen, blit model */
+      desc.Windowed = FALSE;
+      desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+      desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+      desc.Flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
       if (FAILED(dxgiFactory->lpVtbl->CreateSwapChain(
                   dxgiFactory, (IUnknown*)d3d11->device,
                   &desc, (IDXGISwapChain**)&d3d11->swapChain)))
          return false;
    }
+#ifdef HAVE_WINDOW
+   /* Allow Alt+Enter and (re)enter exclusive fullscreen. */
+   dxgiFactory->lpVtbl->MakeWindowAssociation(dxgiFactory, desc.OutputWindow, 0);
+
+   if (FAILED(d3d11->swapChain->lpVtbl->SetFullscreenState(
+      d3d11->swapChain, TRUE, NULL)))
+   {
+      d3d11->swapChain->lpVtbl->SetFullscreenState(
+         d3d11->swapChain, FALSE, NULL);
+      d3d11->swapChain->lpVtbl->SetFullscreenState(
+         d3d11->swapChain, TRUE, NULL);
+   }
+#endif
 
 #ifdef HAVE_WINDOW
-   /* Don't let DXGI mess with the full screen state,
-    * because otherwise we end up with a mismatch
-    * between the window size and the buffers.
-    * RetroArch only uses windowed mode (see above). */
-   if (FAILED(dxgiFactory->lpVtbl->MakeWindowAssociation(dxgiFactory, desc.OutputWindow, DXGI_MWA_NO_ALT_ENTER)))
+   /* Allow Alt+Enter and (re)enter exclusive fullscreen. */
+   dxgiFactory->lpVtbl->MakeWindowAssociation(dxgiFactory, desc.OutputWindow, 0);
+
+   if (FAILED(d3d11->swapChain->lpVtbl->SetFullscreenState(
+      d3d11->swapChain, TRUE, NULL)))
    {
-      RARCH_ERR("[D3D11] Failed to make disable DXGI ALT+ENTER handling.\n");
+      d3d11->swapChain->lpVtbl->SetFullscreenState(
+         d3d11->swapChain, FALSE, NULL);
+      d3d11->swapChain->lpVtbl->SetFullscreenState(
+         d3d11->swapChain, TRUE, NULL);
    }
 #endif
 
