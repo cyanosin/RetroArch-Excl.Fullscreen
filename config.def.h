@@ -241,7 +241,7 @@
  * WinRT and Winapi Family builds */
 #define DEFAULT_FULLSCREEN true
 #else
-#define DEFAULT_FULLSCREEN false
+#define DEFAULT_FULLSCREEN true
 #endif
 
 /* To use windowed mode or not when going fullscreen. */
@@ -249,7 +249,7 @@
 /* Do not use windowed mode for WinRT and Winapi Family builds on the Xbox UWP with fixed resolution shrinks the image into the left top corner of the screen with some libretro cores */
 #define DEFAULT_WINDOWED_FULLSCREEN false
 #else
-#define DEFAULT_WINDOWED_FULLSCREEN true
+#define DEFAULT_WINDOWED_FULLSCREEN false
 #endif
 
 /* Enable automatic switching of the screen refresh rate when using the specified screen mode(s),
@@ -381,7 +381,7 @@
 #else
 #define DEFAULT_WAITABLE_SWAPCHAINS true
 #endif
-#define DEFAULT_MAX_FRAME_LATENCY 1
+#define DEFAULT_MAX_FRAME_LATENCY 2
 #define MAXIMUM_MAX_FRAME_LATENCY 4
 
 /* GL specific */
@@ -389,7 +389,7 @@
 
 /* Attempts to hard-synchronize CPU and GPU.
  * Can reduce latency at cost of performance. */
-#define DEFAULT_HARD_SYNC false
+#define DEFAULT_HARD_SYNC true
 
 /* Configures how many frames the GPU can run ahead of CPU.
  * 0: Syncs to GPU immediately.

@@ -1791,8 +1791,8 @@ static bool d3d10_init_swapchain(d3d10_video_t *d3d10,
    desc.BufferDesc.Width                   = width;
    desc.BufferDesc.Height                  = height;
    desc.BufferDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;
-   desc.BufferDesc.RefreshRate.Numerator   = 60;
-   desc.BufferDesc.RefreshRate.Denominator = 1;
+   desc.BufferDesc.RefreshRate.Numerator   = 0;
+   desc.BufferDesc.RefreshRate.Denominator = 0;
    desc.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 #ifdef HAVE_WINDOW
    desc.OutputWindow                       = (HWND)corewindow;

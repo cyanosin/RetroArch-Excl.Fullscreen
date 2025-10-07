@@ -2187,8 +2187,8 @@ static bool d3d11_init_swapchain(d3d11_video_t* d3d11,
    else
 #endif
       desc.BufferDesc.Format               = DXGI_FORMAT_R8G8B8A8_UNORM;
-   desc.BufferDesc.RefreshRate.Numerator   = 60;
-   desc.BufferDesc.RefreshRate.Denominator = 1;
+   desc.BufferDesc.RefreshRate.Numerator   = 0;
+   desc.BufferDesc.RefreshRate.Denominator = 0;
 #endif
    desc.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 #ifdef HAVE_WINDOW
